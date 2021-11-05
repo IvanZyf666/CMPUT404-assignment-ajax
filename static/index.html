@@ -6,7 +6,7 @@
     <meta content='width=device-width; height=device-height; initial-scale=1.0; maximum-scale=1.0; user-scalable=0;' name='viewport' />
     <meta name="viewport" content="width=device-width" />
     <meta name="license" content="
-        Copyright 2013 Abram Hindle
+        Copyright 2013 Abram Hindle 2021 Ivan Zhang
         
         Licensed under the Apache License, Version 2.0 (the "License");
         you may not use this file except in compliance with the License.
@@ -35,69 +35,56 @@ var H = canvas.height = window.innerHeight-50;
 function sendJSONXMLHTTPRequest(url, objects, callback) {
     var xhr = new XMLHttpRequest();
     xhr.onreadystatechange = function () {
-        if (xhr.readyState==4) {
+        if (xhr.readyState == 4) {
             try {
-                if (xhr.status==200) {
-                    //XXX: parse some JSON from the request!
-                    //XXX: Pass the data to the callback!
+                if (xhr.status == 200) {
+                    // parse some JSON from the request!
+                    // Pass the data to the callback!
+                    if(callback){
+                        var json_file = JSON.parse(xhr.responseText);
+                        callback(json_file)
+                    }
                 }
-            } 
-            catch(e) {
+            }
+            catch (e) {
                 alert('Error: ' + e.name);
             }
         }
     };
     //XXX: POST to a URL
+    xhr.open("POST", url, true);
     //XXX: set the mimetype and the accept headers!
     // Remember to use application/json !
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('Accept', '*/*'); //accept all types
+    // xhr.setRequestHeader('Cache-Control', 'no-cache'); //accept all types
+    xhr.send(JSON.stringify(objects));
 }
 
 
 world = {};
 
 function drawCircle(context,entity) {
-    if(entity["radius"]!=null && entity["radius"] == 5){
+    if(entity["dragger"] && entity["radius"]!=null){
         with(context) {
             beginPath();              
             lineWidth = 3;
             var x = entity["x"];
             var y = entity["y"];
-            //moveTo(x,y);
             fillStyle = entity["colour"];
             strokeStyle = fillStyle;
-            arc(x, y, (entity["radius"])?entity["radius"]:50, 0, 2.0 * Math.PI, false); 
+            arc(x, y, entity["radius"], 0, 2.0 * Math.PI, false); 
             fill();             
         }
     }
     else{
-        // Reference:
-        // MDN, Drawing shapes with canvas
-        // https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Drawing_shapes
+        // reference: https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Drawing_shapes
         with(context){
-            // var canvas = document.getElementById('canvas');
-            // if (canvas.getContext) {
-            //     var ctx = canvas.getContext('2d');
-            //     beginPath();
-            //     lineWidth = 3;
-            //     var x = entity["x"];
-            //     var y = entity["y"];
-            //     y -= 20;
-            //     fillStyle = entity["colour"];
-            //     strokeStyle = fillStyle;
-            //     arc(x, y, 50, 0, Math.PI * 2, true); // Outer circle
-            //     moveTo(x+35, y);
-            //     arc(x, y, 35, 0, Math.PI, false);  // Mouth (clockwise)
-            //     moveTo(x-10, y-10);
-            //     arc(x-15, y-10, 5, 0, Math.PI * 2, true);  // Left eye
-            //     moveTo(x+20, y-10);
-            //     arc(x+15, y-10, 5, 0, Math.PI * 2, true);  // Right eye
-            //     stroke();
-            // }
             var canvas = document.getElementById('canvas');
             if (canvas.getContext) {
                 var ctx = canvas.getContext('2d');
 
-                // draw the pokemon ball edges
+                // draw the pokemon ball background
                 beginPath();
                 var x = entity["x"];
                 var y = entity["y"];
@@ -113,7 +100,8 @@ function drawCircle(context,entity) {
                 fill();
                 strokeStyle="black";
                 stroke();
-
+                
+                // draw the horizontal line
                 beginPath();
                 moveTo(x-40, y-2);
                 lineTo(x+40, y-2);
@@ -122,6 +110,7 @@ function drawCircle(context,entity) {
                 fillStyle="black";
                 fill();
 
+                // draw the pokemon ball center circle
                 beginPath();
                 arc(x,y,10,0,Math.PI*2,false); // 150 45
                 fillStyle="white";
@@ -167,7 +156,10 @@ var drawNext = true;
 
 // Signals that there's something to be drawn
 function drawNextFrame() {
-    drawNext = true;
+    if (drawNext) {
+        renderFrame();
+        drawNext = false;
+    }
 }
 
 // This optionally draws the frame, call this if you're not sure if you should update
@@ -201,9 +193,10 @@ function getPosition(e) {
 
 function addEntity(entity, data) {
     world[entity] = data;
-    drawNextFrame(); // (but should we?)
-    //XXX: Send a XHTML Request that updates the entity you just  modified!
-
+    //drawNextFrame(); // (but should we?)
+    // send a XHTML Request to update the entity
+    var url = "http://" + host + "/entity/" + entity;
+    sendJSONXMLHTTPRequest(url, data)
 }
 
 var counter = 0;
@@ -251,7 +244,6 @@ mouse = (function() {
                 var y = pos[1];
 	        self.clicked = 1;
                 self.callListeners(self.mousedowners,x,y,self.clicked,e);
-                //addEntityWithoutName({'x':x,'y':y,'colour':'red'});
             }
         },
         mouseup: function(e) {
@@ -261,11 +253,10 @@ mouse = (function() {
                 var pos = getPosition(e);
                 var x = pos[0];
                 var y = pos[1];
-	        //self.poppin(x,y);
-	        self.clicked = 0;
+                //self.poppin(x,y);
+                self.clicked = 0;
                 self.selected = -1;
                 self.callListeners(self.mouseuppers,x,y,self.clicked,e);
-                //addEntityWithoutName({'x':x,'y':y,'colour':'blue'});
             }
         },
         touchstart: function(e) {
@@ -311,14 +302,13 @@ mouse = (function() {
 
 
 function getRandomColor() {
-    // Reference: https://developer.mozilla.org/en-US/docs/web/javascript/reference/global_objects/math/random
+    // reference: https://developer.mozilla.org/en-US/docs/web/javascript/reference/global_objects/math/random
+    // colors are picked from the reference
     color_list = ['#aaf0d1', '#7fffd4', '#99e6b3', '#b2ffff', '#d0ff14','#ffa500','#ffe135','#da70d6'];
     var color = color_list[Math.floor(Math.random() * 8)];
     return color;
 }
 
-// Add the application specific mouse listeners!
-//XXX: TODO Make these prettier!
 mouse.mousedowners.push(function(x,y,clicked,e) {
     addEntityWithoutName({'x':x,'y':y});
 });
@@ -329,13 +319,19 @@ mouse.mouseuppers.push(function(x,y,clicked,e) {
 
 mouse.mousedraggers.push(function(x,y,clicked,e) {
     addEntityWithoutName({'x':x,'y':y,'colour': getRandomColor(),
-                          'radius':5});
+                          'dragger':true,'radius':5});
 });
 
-
 function update() {
-    //XXX: TODO Get the world from the webservice using a XMLHTTPRequest
+    drawNext = true
     drawFrame();
+
+    var callback = function(response){
+        world = response;
+        drawFrame();
+    }
+    sendJSONXMLHTTPRequest('/world',null,callback)
+    
 }
 
 // 30 frames per second
